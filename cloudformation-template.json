@@ -1,0 +1,444 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "ECS Fargate service with ALB - Uses only LabRole for AWS Academy Labs",
+  "Parameters": {
+    "ImageURI": {
+      "Type": "String",
+      "Default": "077132975197.dkr.ecr.us-east-1.amazonaws.com/apiprueba:latest",
+      "Description": "URI of the Docker image in ECR"
+    },
+    "LabRoleArn": {
+      "Type": "String",
+      "Default": "arn:aws:iam::077132975197:role/LabRole",
+      "Description": "ARN of the existing LabRole"
+    }
+  },
+  "Resources": {
+    "VPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsHostnames": true,
+        "EnableDnsSupport": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MyApp-VPC"
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MyApp-IGW"
+          }
+        ]
+      }
+    },
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PublicSubnet1": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "CidrBlock": "10.0.1.0/24",
+        "AvailabilityZone": "us-east-1a",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Public Subnet 1"
+          }
+        ]
+      }
+    },
+    "PublicSubnet2": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "CidrBlock": "10.0.2.0/24",
+        "AvailabilityZone": "us-east-1b",
+        "MapPublicIpOnLaunch": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Public Subnet 2"
+          }
+        ]
+      }
+    },
+    "PublicRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "Public Route Table"
+          }
+        ]
+      }
+    },
+    "PublicRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PublicSubnetRouteTableAssociation1": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicSubnet1"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        }
+      }
+    },
+    "PublicSubnetRouteTableAssociation2": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PublicSubnet2"
+        },
+        "RouteTableId": {
+          "Ref": "PublicRouteTable"
+        }
+      }
+    },
+    "EcsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for ECS tasks",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ECS-SecurityGroup"
+          }
+        ]
+      }
+    },
+    "ALBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security group for Application Load Balancer",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "ALB-SecurityGroup"
+          }
+        ]
+      }
+    },
+    "EcsCluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": "my-app-cluster",
+        "CapacityProviders": ["FARGATE"],
+        "DefaultCapacityProviderStrategy": [
+          {
+            "CapacityProvider": "FARGATE",
+            "Weight": 1
+          }
+        ]
+      }
+    },
+    "LogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/ecs/my-app",
+        "RetentionInDays": 7
+      }
+    },
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": "my-app-task",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": ["FARGATE"],
+        "Cpu": "256",
+        "Memory": "512",
+        "ExecutionRoleArn": {
+          "Ref": "LabRoleArn"
+        },
+        "TaskRoleArn": {
+          "Ref": "LabRoleArn"
+        },
+        "ContainerDefinitions": [
+          {
+            "Name": "my-app-container",
+            "Image": {
+              "Ref": "ImageURI"
+            },
+            "PortMappings": [
+              {
+                "ContainerPort": 80,
+                "Protocol": "tcp"
+              }
+            ],
+            "Essential": true,
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Ref": "LogGroup"
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": "ecs"
+              }
+            },
+            "Environment": [
+              {
+                "Name": "NODE_ENV",
+                "Value": "production"
+              },
+              {
+                "Name": "PORT",
+                "Value": "80"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "ApplicationLoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Name": "my-app-alb",
+        "Scheme": "internet-facing",
+        "Type": "application",
+        "Subnets": [
+          {
+            "Ref": "PublicSubnet1"
+          },
+          {
+            "Ref": "PublicSubnet2"
+          }
+        ],
+        "SecurityGroups": [
+          {
+            "Ref": "ALBSecurityGroup"
+          }
+        ]
+      }
+    },
+    "TargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "Name": "my-app-targets",
+        "Port": 80,
+        "Protocol": "HTTP",
+        "TargetType": "ip",
+        "VpcId": {
+          "Ref": "VPC"
+        },
+        "HealthCheckPath": "/",
+        "HealthCheckProtocol": "HTTP",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthCheckTimeoutSeconds": 5,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3
+      }
+    },
+    "Listener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": {
+          "Ref": "ApplicationLoadBalancer"
+        },
+        "Port": 80,
+        "Protocol": "HTTP",
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ]
+      }
+    },
+    "EcsService": {
+      "Type": "AWS::ECS::Service",
+      "DependsOn": "Listener",
+      "Properties": {
+        "ServiceName": "my-app-service",
+        "Cluster": {
+          "Ref": "EcsCluster"
+        },
+        "TaskDefinition": {
+          "Ref": "TaskDefinition"
+        },
+        "DesiredCount": 1,
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": [
+              {
+                "Ref": "PublicSubnet1"
+              },
+              {
+                "Ref": "PublicSubnet2"
+              }
+            ],
+            "SecurityGroups": [
+              {
+                "Ref": "EcsSecurityGroup"
+              }
+            ],
+            "AssignPublicIp": "ENABLED"
+          }
+        },
+        "LoadBalancers": [
+          {
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            },
+            "ContainerName": "my-app-container",
+            "ContainerPort": 80
+          }
+        ]
+      }
+    },
+    "S3Bucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketName": {
+          "Fn::Sub": "my-app-assets-${AWS::AccountId}-${AWS::Region}"
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        }
+      }
+    },
+    "DynamoDBTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "Properties": {
+        "TableName": "MyAppData",
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "id",
+            "AttributeType": "S"
+          }
+        ],
+        "KeySchema": [
+          {
+            "AttributeName": "id",
+            "KeyType": "HASH"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST"
+      }
+    }
+  },
+  "Outputs": {
+    "ClusterName": {
+      "Description": "ECS Cluster name",
+      "Value": {
+        "Ref": "EcsCluster"
+      }
+    },
+    "ServiceName": {
+      "Description": "ECS Service name",
+      "Value": {
+        "Ref": "EcsService"
+      }
+    },
+    "LoadBalancerDNS": {
+      "Description": "Application Load Balancer DNS name",
+      "Value": {
+        "Fn::GetAtt": ["ApplicationLoadBalancer", "DNSName"]
+      }
+    },
+    "ApplicationURL": {
+      "Description": "URL to access your application",
+      "Value": {
+        "Fn::Sub": "http://${ApplicationLoadBalancer.DNSName}"
+      }
+    },
+    "BucketName": {
+      "Description": "S3 Bucket name",
+      "Value": {
+        "Ref": "S3Bucket"
+      }
+    },
+    "TableName": {
+      "Description": "DynamoDB table name",
+      "Value": {
+        "Ref": "DynamoDBTable"
+      }
+    },
+    "LabRoleUsed": {
+      "Description": "LabRole ARN used for all services",
+      "Value": {
+        "Ref": "LabRoleArn"
+      }
+    }
+  }
+}

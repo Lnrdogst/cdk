@@ -1,0 +1,36 @@
+{
+  "name": "cdk-iaac-project",
+  "version": "1.0.0",
+  "description": "AWS CDK Infrastructure as Code project",
+  "main": "lib/app.js",
+  "scripts": {
+    "build": "tsc",npx cdk deploy --parameters VpcId=$VPC_ID --require-approval never
+    "watch": "tsc -w",
+    "test": "jest",
+    "cdk": "cdk",
+  "deploy": "cdk deploy --parameters VpcId=$VPC_ID",
+    "destroy": "cdk destroy",
+    "synth": "cdk synth",
+    "diff": "cdk diff"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.5",
+    "@types/node": "20.5.9",
+    "aws-cdk": "^2.1029.1",
+    "jest": "^29.6.4",
+    "ts-jest": "^29.1.1",
+    "typescript": "~5.1.6"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.214.0",
+    "constructs": "^10.0.0"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "infrastructure",
+    "typescript"
+  ],
+  "author": "Leonardo",
+  "license": "MIT"
+}
