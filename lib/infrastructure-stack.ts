@@ -17,6 +17,26 @@ export class MyInfrastructureStack extends cdk.Stack {
     });
     const vpcId = vpcIdParam.valueAsString;
 
+    // Parameter: Image URI in ECR
+    const imageUriParam = new cdk.CfnParameter(this, 'ImageURI', {
+      type: 'String',
+      description: 'URI of the Docker image in ECR to deploy (e.g. 077132975197.dkr.ecr.us-east-1.amazonaws.com/apiprueba:latest)',
+      default: '077132975197.dkr.ecr.us-east-1.amazonaws.com/apiprueba:latest'
+    });
+
+    // Parameter: LabRole ARN to use as execution/task role
+    const labRoleParam = new cdk.CfnParameter(this, 'LabRoleArn', {
+      type: 'String',
+      description: 'ARN of the existing LabRole to use for task execution and task role',
+      default: 'arn:aws:iam::077132975197:role/LabRole'
+    });
+
+    // Parameter: Subnet IDs for the ECS service (List)
+    const subnetIdsParam = new cdk.CfnParameter(this, 'SubnetIds', {
+      type: 'List<String>',
+      description: 'Comma-separated list of subnet IDs for the ECS service (eg: subnet-aaa,subnet-bbb)'
+    });
+
     // CloudWatch Log Group (fixed name)
     const logGroup = new cdk.aws_logs.CfnLogGroup(this, 'AppLogGroup', {
       logGroupName: '/ecs/AppLogGroup',
@@ -81,12 +101,59 @@ export class MyInfrastructureStack extends cdk.Stack {
       clusterName: 'AppCluster'
     });
 
+    // ECS TaskDefinition (Fargate) using the provided ImageURI and LabRoleArn
+    const taskDef = new cdk.aws_ecs.CfnTaskDefinition(this, 'AppTaskDefinition', {
+      family: 'AppTask',
+      networkMode: 'awsvpc',
+      requiresCompatibilities: ['FARGATE'],
+      cpu: '256',
+      memory: '512',
+      executionRoleArn: labRoleParam.valueAsString,
+      taskRoleArn: labRoleParam.valueAsString,
+      containerDefinitions: [
+        {
+          name: 'app-container',
+          image: imageUriParam.valueAsString,
+          portMappings: [
+            { containerPort: 80, protocol: 'tcp' }
+          ],
+          essential: true,
+          logConfiguration: {
+            logDriver: 'awslogs',
+            options: {
+              'awslogs-group': logGroup.ref,
+              'awslogs-region': this.region,
+              'awslogs-stream-prefix': 'ecs'
+            }
+          }
+        }
+      ]
+    });
+
+    // ECS Service (Fargate) to run the task
+    const service = new cdk.aws_ecs.CfnService(this, 'AppService', {
+      serviceName: 'AppService',
+      cluster: cluster.ref,
+      taskDefinition: taskDef.ref,
+      desiredCount: 1,
+      launchType: 'FARGATE',
+      networkConfiguration: {
+        awsvpcConfiguration: {
+          subnets: subnetIdsParam.valueAsList,
+          securityGroups: [securityGroup.ref],
+          assignPublicIp: 'ENABLED'
+        }
+      }
+    });
+
     // Outputs
     new cdk.CfnOutput(this, 'BucketName', { value: bucket.ref });
     new cdk.CfnOutput(this, 'TableName', { value: table.ref });
     new cdk.CfnOutput(this, 'ClusterName', { value: cluster.ref });
     new cdk.CfnOutput(this, 'LogGroupName', { value: logGroup.ref });
     new cdk.CfnOutput(this, 'SecurityGroupId', { value: securityGroup.ref });
-    new cdk.CfnOutput(this, 'LabRoleArn', { value: labRoleArn });
+    new cdk.CfnOutput(this, 'LabRoleArnUsed', { value: labRoleParam.valueAsString });
+    new cdk.CfnOutput(this, 'TaskDefinitionArn', { value: taskDef.ref });
+    new cdk.CfnOutput(this, 'ServiceName', { value: service.ref });
   }
 }

@@ -27,98 +27,86 @@ El proyecto incluye los siguientes recursos de AWS:
 ## Prerequisitos
 
 - Node.js 18+ instalado
-- AWS CLI configurado con credenciales válidas
-- TypeScript instalado globalmente (opcional)
+# AWS CDK - Infraestructura ECS Fargate (TypeScript)
 
-## Instalación
+Este repositorio contiene un stack AWS CDK que despliega una aplicación containerizada en **ECS Fargate** usando una imagen de **Amazon ECR**. Diseñado para ejecutarse en entornos AWS Academy Labs usando únicamente el LabRole existente.
 
-1. Instalar dependencias:
+## ✅ Stack Desplegado y Funcional
+
+La infraestructura actual incluye:
+- **S3 Bucket** (`AppBucket`) para almacenamiento
+- **DynamoDB Table** (`AppTable`) para datos de la aplicación  
+- **ECS Cluster** (`AppCluster`) ejecutando en Fargate
+- **ECS TaskDefinition** (`AppTask`) con la imagen ECR `077132975197.dkr.ecr.us-east-1.amazonaws.com/apiprueba:latest`
+- **ECS Service** (`AppService`) con 1 instancia ejecutándose
+- **Security Group** (`AppSecurityGroup`) con puertos 80 y 8080 abiertos
+- **CloudWatch Log Group** (`/ecs/AppLogGroup`) para logs del contenedor
+- Usa únicamente `arn:aws:iam::077132975197:role/LabRole` (sin crear nuevos roles)
+
+Estructura relevante
+
+```
+├── app.ts
+├── lib/
+│   └── infrastructure-stack.ts   # Stack principal (Cfn* resources)
+├── package.json
+├── tsconfig.json
+├── cdk.json
+└── README.md
+```
+
+Punto importante sobre VPC y permisos
+- El stack espera recibir el `VpcId` como parámetro CloudFormation (parámetro `VpcId`). Esto evita depender de imports/exports o lookup que puedan fallar en entornos restringidos.
+- El despliegue usa el role existente `LabRole` (no se crean nuevos roles ni se requiere bootstrap de CDK en el entorno objetivo salvo que el CLI local lo pida).
+
+Requisitos
+- Node.js 18+ (o una versión compatible con las dependencias del proyecto)
+- AWS CLI configurado con credenciales que permitan crear recursos en la cuenta/region objetivo
+
+Instalación
+
 ```bash
 npm install
 ```
 
-2. Compilar el proyecto:
-```bash
-npm run build
-```
-
-## Comandos Disponibles
-
-- `npm run build` - Compila el código TypeScript
-- `npm run watch` - Compila en modo watch
-- `npm run test` - Ejecuta las pruebas
-- `npm run cdk` - Ejecuta comandos CDK
-- `npm run deploy` - Despliega la infraestructura
-- `npm run destroy` - Destruye la infraestructura
-- `npm run synth` - Sintetiza el template CloudFormation
-- `npm run diff` - Muestra diferencias con el stack desplegado
-
-## Despliegue
-
-1. Configurar las credenciales de AWS:
-```bash
-aws configure
-```
-
-2. Bootstrap CDK (solo la primera vez):
-```bash
-npx cdk bootstrap
-```
-
-3. Desplegar el stack:
-```bash
-npm run deploy
-```
-
-## Recursos Creados
-
-Después del despliegue, el stack creará:
-
-1. **S3 Bucket** con versionado habilitado y cifrado
-2. **DynamoDB Table** con facturación bajo demanda
-3. **Lambda Function** con código de ejemplo
-4. **API Gateway** con endpoints REST
-5. **IAM Roles** con permisos mínimos necesarios
-
-## Endpoints API
-
-Una vez desplegado, la API tendrá los siguientes endpoints:
-
-- `GET /` - Endpoint principal
-- `GET /items` - Obtener elementos
-- `POST /items` - Crear nuevos elementos
-
-## Limpieza
-
-Para eliminar todos los recursos creados:
+Compilar / Sintetizar
 
 ```bash
-npm run destroy
+npx tsc --noEmit      # opcional: chequeo TS
+npx cdk synth         # genera plantilla CloudFormation en cdk.out/
 ```
 
-## Seguridad
+Despliegue (ejemplo)
 
-- Todos los recursos siguen las mejores prácticas de seguridad
-- Acceso mínimo necesario (principio de menor privilegio)
-- Cifrado habilitado donde sea posible
-- Sin acceso público por defecto
+1) Obtener el VPC ID por defecto (si aplica):
 
-## Variables de Entorno
+```bash
+VPC_ID=$(aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text)
+```
 
-El proyecto utiliza las siguientes variables de entorno:
+2) Desplegar pasando el parámetro `VpcId`:
 
-- `CDK_DEFAULT_ACCOUNT` - Cuenta de AWS (opcional)
-- `CDK_DEFAULT_REGION` - Región de AWS (por defecto: us-east-1)
+```bash
+npx cdk deploy --parameters VpcId=${VPC_ID} --require-approval never
+```
 
-## Contribución
+Notas y recomendaciones
+- Si ya existe una pila en estado `ROLLBACK_COMPLETE`, bórrala con `npx cdk destroy` o desde la consola antes de reintentar.
+- El nombre del bucket es determinista y saneado en tiempo de síntesis para evitar errores CloudFormation por nombres inválidos o terminaciones con `-` o `.`.
+- No modifiques el código si tu intención es reproducir exactamente este comportamiento; cualquier cambio en `lib/infrastructure-stack.ts` puede cambiar nombres y dependencias.
 
-1. Fork el proyecto
-2. Crea una rama para tu feature
-3. Commit tus cambios
-4. Push a la rama
-5. Crea un Pull Request
+Outputs esperados
+- `BucketName` — nombre del bucket creado
+- `TableName` — nombre de la tabla DynamoDB
+- `ClusterName` — nombre del cluster ECS
+- `LogGroupName` — nombre del LogGroup
+- `SecurityGroupId` — id del security group creado
 
-## Licencia
+Cómo limpiar
 
-MIT License
-# cdk
+```bash
+npx cdk destroy --parameters VpcId=${VPC_ID}
+```
+
+
+

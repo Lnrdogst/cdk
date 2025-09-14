@@ -4,11 +4,11 @@
   "description": "AWS CDK Infrastructure as Code project",
   "main": "lib/app.js",
   "scripts": {
-    "build": "tsc",npx cdk deploy --parameters VpcId=$VPC_ID --require-approval never
+    "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
     "cdk": "cdk",
-  "deploy": "cdk deploy --parameters VpcId=$VPC_ID",
+    "deploy": "cdk deploy --parameters VpcId=$VPC_ID",
     "destroy": "cdk destroy",
     "synth": "cdk synth",
     "diff": "cdk diff"
